@@ -1,0 +1,17 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+*.iml
+.idea/
+
+# Local credentials and signing keys
+*.jks
+*.keystore
+.env
+.env.*
+!.env.example
+keystore.properties
+/supabase/.temp/
+/outputs/*.apk
+/outputs/*.apk.sha256

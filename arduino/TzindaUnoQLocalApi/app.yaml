@@ -1,0 +1,5 @@
+name: Tzinda Local SQLite API
+icon: 🛡️
+description: API local del UNO Q para guardar y consultar lecturas de sensores en SQLite.
+ports:
+  - 8081

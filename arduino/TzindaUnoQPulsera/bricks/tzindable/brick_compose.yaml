@@ -1,0 +1,18 @@
+services:
+  tzinda-ble:
+    image: python:3.13-slim
+    # BlueZ restricts peripheral registration on the host system bus.
+    user: "0:0"
+    working_dir: /app
+    command: ["python", "-u", "server.py"]
+    environment:
+      PYTHONPATH: /app/vendor
+    expose:
+      - 8765
+    volumes:
+      # APP_HOME is resolved by Arduino App Lab to the imported app directory.
+      # Brick compose files are copied into .cache, so a relative ./app points to
+      # that cache and mounts an empty directory instead of this source folder.
+      - "${APP_HOME}/bricks/tzindable/app:/app:ro"
+      # El servicio BlueZ corre en el sistema anfitrión del UNO Q.
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket

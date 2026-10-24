@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="database" path="tzinda_local_telemetry.db" />
+    <exclude domain="database" path="tzinda_local_telemetry.db-wal" />
+    <exclude domain="database" path="tzinda_local_telemetry.db-shm" />
+</full-backup-content>

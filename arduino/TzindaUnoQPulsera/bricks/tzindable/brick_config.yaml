@@ -1,0 +1,4 @@
+id: tzindable
+name: Tzinda BLE
+description: Publica las lecturas del UNO Q como servicio BLE para TzindaApp.
+category: miscellaneous

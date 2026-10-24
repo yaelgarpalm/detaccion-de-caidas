@@ -1,0 +1,2 @@
+# Las dependencias BLE viven en el Brick con acceso a D-Bus, no en el contenedor
+# aislado principal de App Lab. Este archivo se conserva vacío intencionalmente.

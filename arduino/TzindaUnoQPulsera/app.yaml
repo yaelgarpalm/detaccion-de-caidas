@@ -1,0 +1,7 @@
+name: Tzinda UNO Q Pulsera
+icon: 🛡️
+description: Lee MAX30102 y MPU6050 y envía pulso, SpO2 y caídas a TzindaApp por BLE y HTTP local.
+ports:
+  - 8081
+bricks:
+  - tzindable: {}
