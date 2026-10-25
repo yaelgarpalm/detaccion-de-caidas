@@ -1,4 +1,4 @@
-﻿package com.example.guardian_iot
+package com.example.guardian_iot
 
 import android.app.job.JobInfo
 import android.app.job.JobParameters
@@ -98,9 +98,15 @@ private class SupabaseSyncRunner(context: Context) {
                 val dev = existing.optJSONObject(i) ?: continue
                 val devId = dev.optString("id")
                 val logId = dev.optString("logical_id")
+                val devType = dev.optString("device_type")
+                val linkStatus = dev.optString("link_status")
+                val devName = dev.optString("device_name").takeUnless { it.isBlank() } ?: "Cámara"
                 if (devId.isNotBlank()) allExistingIds.add(devId)
                 if (logId.isNotBlank() && devId.isNotBlank()) {
                     byLogicalId[logId] = devId
+                }
+                if (devType == "camera" && linkStatus == "linked" && logId != "camera-phone-local" && devId.isNotBlank()) {
+                    store.upsertRegisteredCamera(devId, devName)
                 }
             }
 
@@ -175,6 +181,12 @@ private class SupabaseSyncRunner(context: Context) {
                 try { MedicationRepository(app, backend, store).synchronize(medicationOwner, readOnly = caregiver) }
                 catch (f: BackendFailure) { if (f.status != 404) hasError = true }
                 catch (_: Exception) {}
+            }
+            if (store.role() == AppStore.ROLE_WEARER) {
+                try {
+                    val caregivers = backend.activeCaregiversForOwner()
+                    store.prefs.edit().putBoolean("wearer_has_linked_caregiver", caregivers.length() > 0).apply()
+                } catch (_: Exception) {}
             }
         }
         if (store.prefs.getBoolean("device_sync_configured", false)) {

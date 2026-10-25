@@ -1,4 +1,4 @@
-﻿package com.example.guardian_iot
+package com.example.guardian_iot
 
 import android.net.Uri
 import org.json.JSONArray
@@ -15,7 +15,7 @@ class BackendFailure(val category: Category, val status: Int = 0, cause: Throwab
         NETWORK, INVALID_CREDENTIALS, EMAIL_UNCONFIRMED, EMAIL_CONFIRMATION_REQUIRED,
         EMAIL_RATE_LIMIT, AUTH_RATE_LIMIT, EMAIL_DELIVERY, VALIDATION, TEMPORARY, SESSION,
         CONFIGURATION, MISSING_MIGRATION, CAREGIVER_INVITE_INVALID_OR_EXPIRED,
-        CAREGIVER_INVITE_SELF, UNKNOWN
+        CAREGIVER_INVITE_SELF, CAMERA_INVITE_INVALID_OR_EXPIRED, CAMERA_INVITE_SELF, UNKNOWN
     }
 
     companion object {
@@ -31,9 +31,11 @@ class BackendFailure(val category: Category, val status: Int = 0, cause: Throwab
             Category.TEMPORARY -> "Supabase no está disponible ahora. Inténtalo más tarde."
             Category.SESSION -> "Tu sesión terminó. Inicia sesión otra vez."
             Category.CONFIGURATION -> "Falta configurar la URL o la clave pública de Supabase."
-            Category.MISSING_MIGRATION -> "Supabase todavía no tiene activada la vinculación de cámaras. Aplica la migración 20261022003000_camera_pairing_and_three_roles.sql al proyecto configurado en la app."
+            Category.MISSING_MIGRATION -> "Supabase todavía no tiene activada la vinculación de cámaras. Aplica la migración correspondiente en el proyecto de Supabase."
             Category.CAREGIVER_INVITE_INVALID_OR_EXPIRED -> "El código venció, ya se usó o no coincide. Pide a la persona protegida que genere uno nuevo y vuelve a intentarlo."
             Category.CAREGIVER_INVITE_SELF -> "No puedes vincular tu cuenta contigo misma. La persona cuidadora debe usar otra cuenta."
+            Category.CAMERA_INVITE_INVALID_OR_EXPIRED -> "El código de cámara venció, ya se usó o no coincide. Genera uno nuevo en Dispositivos y vuelve a intentarlo."
+            Category.CAMERA_INVITE_SELF -> "No puedes vincular la cámara con la misma cuenta de la persona protegida. Usa otra cuenta para el dispositivo de cámara."
             Category.UNKNOWN -> "No se pudo completar la operación. Inténtalo de nuevo."
         }
     }
@@ -396,6 +398,39 @@ class SupabaseBackend(
         request("POST", "/rest/v1/rpc/unlink_paired_camera", JSONObject(), true)
     }
 
+    fun unlinkCameraDeviceByOwner(deviceId: String) {
+        val session = requireSession()
+        try {
+            request("POST", "/rest/v1/rpc/unlink_camera_device_by_owner",
+                JSONObject().put("p_device_id", deviceId), true)
+        } catch (_: Exception) {
+            request("PATCH", "/rest/v1/devices?id=eq." + encode(deviceId) + "&user_id=eq." + encode(session.userId),
+                JSONObject().put("link_status", "unlinked"), true)
+        }
+    }
+
+    fun activeCaregiversForOwner(): JSONArray {
+        val session = requireSession()
+        return request(
+            "GET",
+            "/rest/v1/caregiver_links?select=id,caregiver_user_id,status,created_at&owner_user_id=eq." +
+                encode(session.userId) + "&status=eq.active&order=created_at.desc",
+            null,
+            true,
+        ).optJSONArray("data") ?: JSONArray()
+    }
+
+    fun linkedCamerasForOwner(): JSONArray {
+        val session = requireSession()
+        return request(
+            "GET",
+            "/rest/v1/devices?select=id,logical_id,name,device_type,link_status,last_connected_at,last_sync_at&user_id=eq." +
+                encode(session.userId) + "&device_type=eq.camera&link_status=eq.linked&order=updated_at.desc",
+            null,
+            true,
+        ).optJSONArray("data") ?: JSONArray()
+    }
+
     fun insertPairedCameraFallEvent(event: PendingFallEvent) {
         request("POST", "/rest/v1/rpc/submit_paired_camera_fall_event", JSONObject()
             .put("p_event_id", event.id)
@@ -614,7 +649,11 @@ class SupabaseBackend(
                         BackendFailure.Category.CAREGIVER_INVITE_SELF
                     path == "/rest/v1/rpc/accept_caregiver_invite" && message.contains("invite_invalid_or_expired") ->
                         BackendFailure.Category.CAREGIVER_INVITE_INVALID_OR_EXPIRED
-                    path == "/rest/v1/rpc/create_camera_device_invite" &&
+                    path == "/rest/v1/rpc/accept_camera_device_invite" && message.contains("cannot_link_camera_to_same_account") ->
+                        BackendFailure.Category.CAMERA_INVITE_SELF
+                    path == "/rest/v1/rpc/accept_camera_device_invite" && message.contains("camera_invite_invalid_or_expired") ->
+                        BackendFailure.Category.CAMERA_INVITE_INVALID_OR_EXPIRED
+                    (path == "/rest/v1/rpc/create_camera_device_invite" || path == "/rest/v1/rpc/accept_camera_device_invite") &&
                         (code == "pgrst202" || status == 404 && (message.contains("schema cache") || message.contains("function"))) -> BackendFailure.Category.MISSING_MIGRATION
                     code == "email_not_confirmed" || message.contains("email not confirmed") -> BackendFailure.Category.EMAIL_UNCONFIRMED
                     code in setOf("invalid_credentials", "invalid_grant") || message.contains("invalid login credentials") -> BackendFailure.Category.INVALID_CREDENTIALS
@@ -662,4 +701,3 @@ class SupabaseBackend(
         private const val TOKEN_REFRESH_MARGIN_SECONDS = 300L
     }
 }
-
