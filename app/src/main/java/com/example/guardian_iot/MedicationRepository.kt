@@ -1,4 +1,4 @@
-package com.example.guardian_iot
+﻿package com.example.guardian_iot
 
 import android.content.Context
 import org.json.JSONArray
@@ -13,7 +13,7 @@ class MedicationRepository(
     private val store: AppStore = AppStore(context),
 ) {
     private val app = context.applicationContext
-    val database = MedicationDatabase(app)
+    val database = MedicationDatabase.getInstance(app)
 
     fun currentOwnerScope(): String {
         val userId = runCatching { EncryptedSessionStore(app).read()?.userId }.getOrNull()
@@ -83,8 +83,10 @@ class MedicationRepository(
                     backend.upsertMedication(item)
                     database.markMedicationSynced(item.id, item.updatedAtMillis)
                 } catch (failure: BackendFailure) {
-                    database.failMedication(item.id)
-                    throw failure
+                    if (failure.status != 404) {
+                        database.failMedication(item.id)
+                        throw failure
+                    }
                 }
             }
             database.pendingIntakes(ownerId).forEach { intake ->
@@ -92,13 +94,19 @@ class MedicationRepository(
                     backend.upsertMedicationIntake(intake)
                     database.markIntakeSynced(intake.id, intake.updatedAtMillis)
                 } catch (failure: BackendFailure) {
-                    database.failIntake(intake.id)
-                    throw failure
+                    if (failure.status != 404) {
+                        database.failIntake(intake.id)
+                        throw failure
+                    }
                 }
             }
         }
 
-        val medicationRows = backend.medicationRecords(ownerId)
+        val medicationRows = try {
+            backend.medicationRecords(ownerId)
+        } catch (e: BackendFailure) {
+            if (e.status == 404) JSONArray() else throw e
+        }
         val remoteMedicationIds = mutableSetOf<String>()
         for (index in 0 until medicationRows.length()) {
             parseMedication(medicationRows.optJSONObject(index) ?: continue)?.let {
@@ -106,7 +114,11 @@ class MedicationRepository(
                 database.mergeRemoteMedication(it)
             }
         }
-        val intakeRows = backend.medicationIntakeRecords(ownerId)
+        val intakeRows = try {
+            backend.medicationIntakeRecords(ownerId)
+        } catch (e: BackendFailure) {
+            if (e.status == 404) JSONArray() else throw e
+        }
         val remoteIntakeIds = mutableSetOf<String>()
         for (index in 0 until intakeRows.length()) {
             parseIntake(intakeRows.optJSONObject(index) ?: continue)?.let {

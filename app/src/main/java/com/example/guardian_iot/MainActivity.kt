@@ -1,4 +1,4 @@
-package com.example.guardian_iot
+﻿package com.example.guardian_iot
 
 import android.Manifest
 import android.app.*
@@ -300,16 +300,14 @@ class MainActivity : ComponentActivity() {
                 setPadding(dp(18), dp(12), dp(18), dp(12))
             }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(16) })
             addView(text(deviceName, 22, true).apply { gravity = Gravity.CENTER; setPadding(0, dp(12), 0, dp(4)) })
-            addView(text("Vinculación segura por Internet", 15, true, accent).apply { gravity = Gravity.CENTER })
-            addView(text("Puedes estar en otra red Wi-Fi o usar datos móviles. Solo necesitas conexión a TzindaApp.", 14, color = muted)
-                .apply { gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(8)) })
+            addView(text("Vinculación segura", 15, true, accent).apply { gravity = Gravity.CENTER })
             val displayCode = code.filter(Char::isLetterOrDigit).uppercase(Locale.ROOT).chunked(4).joinToString("-")
             addView(text(displayCode, 24, true, ink).apply {
                 gravity = Gravity.CENTER
                 background = rounded(cardColor, 18)
                 setPadding(dp(18), dp(10), dp(18), dp(10))
-            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-            addView(text("El código se comprueba al conectar. Debe seguir vigente y pertenecer a otra cuenta.", 13, color = muted)
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+            addView(text("Código de 8 caracteres de un solo uso.", 13, color = muted)
                 .apply { gravity = Gravity.CENTER; setPadding(0, dp(8), 0, 0) })
         }
         AlertDialog.Builder(this).setTitle("¿Conectar este dispositivo?").setView(content)
@@ -356,7 +354,7 @@ class MainActivity : ComponentActivity() {
                         .putString("caregiver_owner_id", link.optString("owner_user_id"))
                         .putString("caregiver_link_device_id", deviceId).remove("caregiver_location_device_id")
                         .remove("pending_pairing_type").remove("pending_pairing_code").apply()
-                    toast("Cuenta vinculada. Ya puedes ver sus dispositivos y ubicación.")
+                    toast("Cuenta vinculada.")
                     tab = 0; render()
                 }.onFailure { status?.text = it.message ?: "No se pudo vincular la cuenta."; if (status == null) toast(it.message ?: "Código inválido o vencido.", true) }
             }
@@ -816,27 +814,27 @@ class MainActivity : ComponentActivity() {
             setImageResource(R.drawable.ic_shield); setColorFilter(accent); contentDescription = "TzindaApp"
         }, LinearLayout.LayoutParams(dp(54), dp(54)))
         gap(body, 22)
-        heading(body, "TZINDAAPP · CUIDADO CONECTADO", "¿Cómo usarás TzindaApp?", "Elige el flujo que corresponde a este teléfono. Puedes cambiarlo después en Ajustes.")
+        heading(body, "TZINDAAPP · CUIDADO CONECTADO", "¿Cómo usarás TzindaApp?", "Selecciona el rol para este dispositivo.")
 
         val wearer = card(body, cardColor)
         wearer.addView(text("LLEVO EL TELÉFONO", 13, true, accent))
         wearer.addView(text("Soy la persona protegida", 21, true))
-        wearer.addView(text("Activa el detector de caídas, la cámara con IA y la ubicación de este teléfono. Configura tus contactos de confianza.", 16, color = muted))
+        wearer.addView(text("Detector de caídas · ubicación · cámara", 15, color = muted))
         wearer.addView(button(if (store.role() == AppStore.ROLE_WEARER) "Continuar con este rol" else "Configurar como persona protegida") { chooseRole(AppStore.ROLE_WEARER) })
 
         val caregiver = card(body, softSurface)
         caregiver.addView(text("ACOMPAÑO A OTRA PERSONA", 13, true, accent))
         caregiver.addView(text("Soy cuidador o familiar", 21, true))
-        caregiver.addView(text("Consulta el estado compartido de una persona, su ubicación y las alertas cuando exista una vinculación activa.", 16, color = muted))
+        caregiver.addView(text("Consulta de estado, ubicación y alertas de la persona vinculada.", 15, color = muted))
         caregiver.addView(button(if (store.role() == AppStore.ROLE_CAREGIVER) "Continuar con este rol" else "Configurar como cuidador", false) { chooseRole(AppStore.ROLE_CAREGIVER) })
 
         val camera = card(body, mint)
         camera.addView(text("USO COMO DISPOSITIVO INDEPENDIENTE", 13, true, accent))
         camera.addView(text("Esta app estará instalada en una cámara", 21, true))
-        camera.addView(text("Vincula esta cámara con un QR o código de la persona protegida. Su estado y eventos aparecerán como un dispositivo separado.", 16, color = muted))
+        camera.addView(text("Vinculación con QR o código. Detección visual de posturas de riesgo.", 15, color = muted))
         camera.addView(button(if (store.role() == AppStore.ROLE_CAMERA) "Continuar con acceso de cámara" else "Configurar acceso de cámara", false) { chooseRole(AppStore.ROLE_CAMERA) })
 
-        body.addView(text("Elige persona protegida, cuidador/a o cámara. Las vinculaciones se realizan con QR o código temporal.", 14, color = muted).apply { setPadding(dp(4), dp(12), dp(4), 0) })
+        // Fin de seleccion de rol
     }
     private fun cameraHome(body: LinearLayout) {
         heading(body, "ACCESO DE CÁMARA", "Cámara vinculable", "Este teléfono funciona como un dispositivo de cámara independiente para la persona protegida.")
@@ -844,7 +842,7 @@ class MainActivity : ComponentActivity() {
         val status = card(body, if (linkId.isBlank()) softSurface else mint)
         status.addView(text(if (linkId.isBlank()) "AÚN SIN VINCULAR" else "CÁMARA VINCULADA", 13, true, accent))
         status.addView(text(if (linkId.isBlank()) "Vincúlala con la cuenta de la persona protegida" else store.prefs.getString("paired_camera_name", "Cámara protegida").orEmpty(), 20, true))
-        status.addView(text(if (linkId.isBlank()) "Pide a la persona que genere un QR o código en Dispositivos. Puedes escanearlo aquí o escribir sus 8 caracteres." else "Los eventos detectados por esta cámara se sincronizan dentro del dispositivo Cámara de la persona protegida.", 15, color = muted))
+        status.addView(text(if (linkId.isBlank()) "Escanea el código QR o ingresa los 8 dígitos generados en Dispositivos." else "Eventos de cámara sincronizados con la persona protegida.", 15, color = muted))
         status.addView(button("Vincular con QR o código  →") { selectTab(2) })
         val detector = card(body)
         detector.addView(text("Cámara opcional", 20, true))
@@ -940,6 +938,7 @@ class MainActivity : ComponentActivity() {
     }
     private fun createCaregiverOnlineInvite() {
         if (!backend.isConfigured || sessions.read() == null) { toast("Inicia sesión para vincular por Internet.", true); return }
+        SyncScheduler.enqueue(applicationContext, immediate = true)
         toast("Preparando código seguro para el cuidador/a…")
         io.execute {
             val result = runCatching { backend.createCaregiverAccountInvite() }
@@ -997,7 +996,7 @@ class MainActivity : ComponentActivity() {
         homeHeadline = text(if (GuardianMonitorService.monitoring) "Protección activa" else "Protección en pausa", 25, true, ink).also { status.addView(it) }
         homeStatus = text("", 15, color = muted).also { status.addView(it) }
         gap(status, 8)
-        status.addView(text("El teléfono analiza el movimiento y, si detecta una posible caída, inicia una cuenta regresiva antes de avisar a tu red.", 16, color = muted))
+        status.addView(text("Detecta caídas y avisa a tu red de apoyo.", 15, color = muted))
         val recipients = store.recipients()
         if (recipients.isEmpty()) status.addView(text("Agrega al menos un contacto antes de activar el monitoreo.", 14, true, critical))
 
@@ -1018,18 +1017,18 @@ class MainActivity : ComponentActivity() {
 
         val medicationCard = card(body, softSurface)
         medicationCard.addView(text("Medicamentos", 20, true))
-        medicationCard.addView(text("Registra los horarios indicados y recibe recordatorios aunque no haya Internet.", 15, color = muted))
+        medicationCard.addView(text("Horarios, recordatorios e historial.", 15, color = muted))
         medicationCard.addView(button("Abrir mis medicamentos  →") { openMedicationScreen() })
 
         val aiCard = card(body, softSurface)
         aiCard.addView(text("CÁMARA OPCIONAL", 13, true, accent))
         aiCard.addView(text("Revisa el espacio cuando lo necesites", 20, true))
-        aiCard.addView(text("La cámara permanece apagada hasta que la abras.", 15, color = muted))
+        aiCard.addView(text("Se activa solo cuando la abres.", 15, color = muted))
         aiCard.addView(button("Abrir cámara de apoyo  →", false) { openCameraScreen() })
 
         val help = card(body)
         help.addView(text("¿Necesitas ayuda ahora?", 21, true))
-        help.addView(text("TzindaApp solicitará SMS y llamadas a tus contactos guardados.", 16, color = muted))
+        help.addView(text("Envío de SMS e intento de llamada a tus contactos.", 15, color = muted))
         val sos = button("✦   Pedir ayuda inmediata (SOS)") {
             AlertDialog.Builder(this).setTitle("Enviar SMS de ayuda")
                 .setMessage("Se solicitarán SMS a ${store.recipients().size} contacto(s) y se intentará llamarles. La recepción depende de la SIM, la red y la disponibilidad del teléfono.")
@@ -1080,44 +1079,79 @@ class MainActivity : ComponentActivity() {
         val today = SimpleDateFormat("EEEE, d 'de' MMMM", Locale("es", "MX")).format(Date())
             .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("es", "MX")) else it.toString() }
         body.addView(text("▢  $today", 14, true, muted))
-        heading(body, "VISTA DE CUIDADOR", "Hola, cuidador/a", "Revisa el estado de la persona que acompañas.")
+        heading(body, "VISTA DE CUIDADOR", "Hola, cuidador/a", "Supervisión y estado en tiempo real.")
 
         val status = card(body, mint)
         val linked = store.prefs.getString("caregiver_link_id", "").orEmpty().isNotBlank()
         val ownerName = store.prefs.getString("caregiver_shared_name", "").orEmpty()
         status.addView(text(if (linked) "●  VÍNCULO ACTIVO" else "○  SIN VÍNCULO", 13, true, accent))
         status.addView(text(if (linked) ownerName.ifBlank { "Persona vinculada" } else "Aún no hay una persona conectada", 21, true))
-        status.addView(text(if (linked) "Datos compartidos por Internet, aunque cada teléfono use una red distinta." else "Este teléfono todavía no está conectado a una persona protegida.", 15, color = muted))
+        status.addView(text(if (linked) "Supervisión activa" else "Sin vínculo activo", 15, color = muted))
         if (linked) {
             val devices = runCatching { JSONArray(store.prefs.getString("caregiver_shared_devices", "[]")) }.getOrDefault(JSONArray())
             if (devices.length() > 0) {
-                status.addView(text("Dispositivos compartidos", 16, true).apply { setPadding(0, dp(10), 0, dp(4)) })
+                status.addView(text("Dispositivos", 16, true).apply { setPadding(0, dp(10), 0, dp(4)) })
+                val now = System.currentTimeMillis()
                 for (index in 0 until devices.length()) {
                     val device = devices.optJSONObject(index) ?: continue
-                    status.addView(text("• ${device.optString("name")} · ${device.optString("device_type").replace('_', ' ')}", 14, color = muted))
+                    val devName = device.optString("name").ifBlank { "Dispositivo" }
+                    val devType = device.optString("device_type").replace('_', ' ')
+                    val lastSyncStr = device.optString("last_sync_at").takeIf { it.isNotBlank() && it != "null" }
+                        ?: device.optString("last_connected_at").takeIf { it.isNotBlank() && it != "null" }
+                    val lastSyncMs = lastSyncStr?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrDefault(0L) } ?: 0L
+                    val ageMs = if (lastSyncMs > 0L) (now - lastSyncMs).coerceAtLeast(0L) else Long.MAX_VALUE
+                    val statusText = when {
+                        lastSyncMs == 0L -> "Sin datos de conexión"
+                        ageMs < 120_000L -> "Conectado"
+                        ageMs < 3_600_000L -> "Última comunicación: hace ${ageMs / 60_000L} min"
+                        ageMs < 86_400_000L -> "Última comunicación: hace ${ageMs / 3_600_000L} h"
+                        else -> "Sin conexión"
+                    }
+                    status.addView(text("• $devName ($devType) · $statusText", 14, color = muted))
                 }
             }
         }
         status.addView(button(if (linked) "Administrar vínculo" else "Vincular persona protegida  →") { selectTab(2) })
+
+        val sharedEvents = runCatching { JSONArray(store.prefs.getString("caregiver_shared_events", "[]")) }.getOrDefault(JSONArray())
+        val recentFall = (0 until sharedEvents.length()).mapNotNull { sharedEvents.optJSONObject(it) }.firstOrNull { ev ->
+            val cStatus = ev.optString("confirmation_status")
+            val classif = ev.optString("classification")
+            cStatus == "pending" || classif in setOf("possible_fall", "fall")
+        }
+        if (recentFall != null) {
+            val alertCard = card(body, if (dark) Color.parseColor("#3B2020") else Color.parseColor("#FBDCD8"))
+            alertCard.addView(text("⚠️  ALERTA RECIENTE", 13, true, critical))
+            alertCard.addView(text("Posible caída detectada", 18, true, critical))
+            val occ = recentFall.optString("occurred_at")
+            val src = recentFall.optString("source").replace('_', ' ')
+            val cStatus = recentFall.optString("confirmation_status")
+            alertCard.addView(text("Fuente: $src · Estado: $cStatus\nFecha: $occ", 14, color = ink))
+        }
         addSharedLocationCard(body)
         vitalsUnavailableCard(body, caregiver = true)
         val medicationCard = card(body, softSurface)
         medicationCard.addView(text("Medicamentos compartidos", 20, true))
-        medicationCard.addView(text(if (linked) "Consulta los medicamentos de la persona vinculada. El control de horarios y confirmaciones permanece en su teléfono." else "Vincula a una persona para revisar los medicamentos que haya autorizado compartir.", 15, color = muted))
+        medicationCard.addView(text(if (linked) "Medicamentos autorizados por la persona vinculada" else "Requiere vínculo activo", 15, color = muted))
         medicationCard.addView(button("Consultar medicamentos  →") { openMedicationScreen() })
         addSharedPhoneMotionCard(body)
         addCaregiverSyncControls(body)
 
         val events = card(body)
         events.addView(text("Actividad reciente", 20, true))
-        val sharedEvents = runCatching { JSONArray(store.prefs.getString("caregiver_shared_events", "[]")) }.getOrDefault(JSONArray())
         if (sharedEvents.length() == 0) {
-            events.addView(text("Sin eventos compartidos", 17, true, muted))
-            events.addView(text(if (linked) "Todavía no hay eventos sincronizados." else "Vincula una cuenta para consultar eventos compartidos.", 15, color = muted))
-        } else for (index in 0 until minOf(sharedEvents.length(), 3)) {
-            val row = sharedEvents.optJSONObject(index) ?: continue
-            events.addView(text("${row.optString("classification").replace('_', ' ')} · ${row.optString("source").replace('_', ' ')}", 16, true))
-            events.addView(text("${row.optString("occurred_at")} · ${row.optString("confirmation_status")}", 13, color = muted))
+            events.addView(text("Sin eventos compartidos", 16, true, muted))
+            events.addView(text(if (linked) "Sin incidentes ni alertas registradas." else "Requiere vínculo activo.", 14, color = muted))
+        } else {
+            for (index in 0 until minOf(sharedEvents.length(), 4)) {
+                val row = sharedEvents.optJSONObject(index) ?: continue
+                val evName = row.optString("classification").replace('_', ' ')
+                val evSource = row.optString("source").replace('_', ' ')
+                val evStatus = row.optString("confirmation_status")
+                val evTime = row.optString("occurred_at")
+                events.addView(text("$evName · $evSource", 15, true))
+                events.addView(text("$evTime · $evStatus", 13, color = muted).apply { setPadding(0, 0, 0, dp(4)) })
+            }
         }
     }
     private fun refreshCaregiverSharedData(force: Boolean = false) {
@@ -1145,8 +1179,14 @@ class MainActivity : ComponentActivity() {
                 val events = backend.sharedEvents(linkedOwnerId, linkedDeviceId)
                 val measurements = backend.sharedMeasurements(linkedOwnerId, linkedDeviceId)
                 val phoneMotion = runCatching { backend.sharedPhoneMotion(linkedOwnerId, linkedDeviceId) }.getOrNull()
-                val locationDevice = linkedDeviceId ?: (0 until devices.length()).mapNotNull { devices.optJSONObject(it) }
-                    .firstOrNull { it.optString("device_type") == "phone" }?.optString("id").orEmpty()
+                val phoneDevices = (0 until devices.length()).mapNotNull { devices.optJSONObject(it) }
+                    .filter { it.optString("device_type") == "phone" }
+                    .sortedByDescending { dev ->
+                        val syncStr = dev.optString("last_sync_at").takeIf { it.isNotBlank() && it != "null" }
+                            ?: dev.optString("last_connected_at").takeIf { it.isNotBlank() && it != "null" }
+                        syncStr?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrDefault(0L) } ?: 0L
+                    }
+                val locationDevice = linkedDeviceId ?: phoneDevices.firstOrNull()?.optString("id").orEmpty()
                 val location = locationDevice.takeIf { it.isNotBlank() }
                     ?.let { runCatching { backend.sharedLocation(linkedOwnerId, it) }.getOrNull() }
                 JSONObject().put("name", profile?.optString("full_name").orEmpty())
@@ -1189,7 +1229,7 @@ class MainActivity : ComponentActivity() {
         if (deviceId.isBlank() || caregiverLocationRealtimeDevice == deviceId) return
         caregiverLocationRealtime?.stop()
         caregiverLocationRealtimeDevice = deviceId
-        caregiverLocationRealtime = CaregiverLocationRealtime(backend, sessions) { location ->
+        caregiverLocationRealtime = CaregiverLocationRealtime(backend, sessions, onLocation = { location ->
             runOnUiThread {
                 if (store.prefs.getString("caregiver_location_device_id", "").orEmpty() != deviceId) return@runOnUiThread
                 val editor = store.prefs.edit()
@@ -1198,7 +1238,7 @@ class MainActivity : ComponentActivity() {
                 editor.apply()
                 if (tab in 0..2) render()
             }
-        }.also { it.start(deviceId) }
+        }, onRealtimeError = { err -> runOnUiThread { store.prefs.edit().putString("caregiver_shared_status", "Aviso Realtime (ubicación): $err").apply(); if (tab in 0..2) render() } }).also { it.start(deviceId) }
     }
     private fun ensureCaregiverHealthRealtime(ownerId: String, deviceId: String?) {
         val key = "$ownerId:${deviceId.orEmpty()}"
@@ -1211,6 +1251,7 @@ class MainActivity : ComponentActivity() {
             onMeasurement = ::mergeCaregiverMeasurement,
             onFallEvent = { refreshCaregiverSharedData(force = true) },
             onPhoneMotion = ::mergeCaregiverPhoneMotion,
+            onRealtimeError = { err -> runOnUiThread { store.prefs.edit().putString("caregiver_shared_status", "Aviso Realtime: $err").apply(); if (tab in 0..2) render() } },
         ).also { it.start(ownerId, deviceId) }
     }
 
@@ -1250,13 +1291,13 @@ class MainActivity : ComponentActivity() {
         val ageMs = if (hasCoordinates) (System.currentTimeMillis() - capturedAt).coerceAtLeast(0L) else Long.MAX_VALUE
         val live = hasCoordinates && ageMs <= 90_000L
         caregiverSharedLocationView = text(
-            if (!hasCoordinates) "Esperando la ubicación de la persona protegida" else if (live) "●  EN VIVO" else "Última ubicación",
+            if (!hasCoordinates) "Sin datos" else if (live) "●  EN VIVO" else "Última ubicación",
             17, true, if (live) accent else muted,
         ).also { locationCard.addView(it) }
-        caregiverLocationCoordinatesView = text(if (hasCoordinates) "$latitude, $longitude" else "Sin ubicación disponible", 15, true)
+        caregiverLocationCoordinatesView = text(if (hasCoordinates) "$latitude, $longitude" else "—", 15, true)
             .also { locationCard.addView(it) }
         val freshnessText = when {
-            !hasCoordinates -> "Se actualiza por Internet cuando la persona comparte su ubicación."
+            !hasCoordinates -> "Sin datos de ubicación"
             ageMs < 60_000L -> "Actualizada hace menos de un minuto"
             ageMs < 3_600_000L -> "Actualizada hace ${ageMs / 60_000L} min"
             else -> "Actualizada hace ${ageMs / 3_600_000L} h"
@@ -1276,10 +1317,10 @@ class MainActivity : ComponentActivity() {
         card.addView(text("Estado de conexión", 13, true, accent))
         val linked = store.prefs.getString("caregiver_link_id", "").orEmpty().isNotBlank()
         card.addView(text(if (linked) "Vínculo activo" else "Sin conexión con una persona protegida", 20, true))
-        card.addView(text(if (linked) "El historial llega por Internet desde cualquier red con conexión." else "Vincula una cuenta para consultar la información desde otra red.", 15, color = muted))
+        card.addView(text(if (linked) "Historial de incidentes y avisos" else "Requiere vínculo activo", 15, color = muted))
         card.addView(button("Configurar vinculación  →") { selectTab(2) })
         val rows = runCatching { JSONArray(store.prefs.getString("caregiver_shared_events", "[]")) }.getOrDefault(JSONArray())
-        if (rows.length() == 0) card.addView(text("No hay eventos remotos disponibles.", 15, color = muted))
+        if (rows.length() == 0) card.addView(text("Sin eventos registrados.", 15, color = muted))
         else for (i in 0 until rows.length()) {
             val row = rows.optJSONObject(i) ?: continue
             val eventCard = card(body)
@@ -1290,18 +1331,17 @@ class MainActivity : ComponentActivity() {
     }
     private fun caregiverPersonScreen(body: LinearLayout) {
         refreshCaregiverSharedData()
-        heading(body, "VINCULACIÓN RÁPIDA", "Conectar a una persona", "Escanea su QR o escribe el código de 8 caracteres. No necesitan estar en la misma red.")
+        heading(body, "VINCULACIÓN", "Conectar a una persona", "Usa el QR o código de 8 caracteres.")
         val remoteLinked = store.prefs.getString("caregiver_link_id", "").orEmpty().isNotBlank()
         val status = card(body, if (remoteLinked) mint else softSurface)
         status.addView(text(if (remoteLinked) "●  CONEXIÓN ACTIVA" else "○  LISTO PARA CONECTAR", 13, true, accent))
         status.addView(text(if (remoteLinked) store.prefs.getString("caregiver_shared_name", "Persona protegida").orEmpty().ifBlank { "Persona protegida" }
             else "Tu teléfono de cuidador/a", 20, true))
-        status.addView(text(if (remoteLinked) "Los datos se comparten por Internet y se actualizan aunque usen redes distintas."
-            else "Conéctate por Wi-Fi o datos móviles. Ambos teléfonos solo necesitan acceso a TzindaApp.", 14, color = muted))
+        status.addView(text(if (remoteLinked) "Sincronización activa" else "Listo para vincular", 14, color = muted))
 
         val connect = card(body)
-        connect.addView(text("Conectar en unos pasos", 19, true))
-        connect.addView(text("1. Escanea el QR de la persona protegida o escribe su código.\n2. Revisa el vínculo.\n3. Pulsa Conectar.", 15, color = muted))
+        connect.addView(text("Vinculación", 19, true))
+        connect.addView(text("Escanea el QR o escribe el código de 8 caracteres.", 15, color = muted))
         connect.addView(button("▦  Escanear QR") { scanPairingQr("caregiver") })
         val code = field(connect, "Código de vinculación", "", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS, "caregiver_invite_code")
         code.filters = arrayOf(android.text.InputFilter.LengthFilter(9))
@@ -1383,14 +1423,22 @@ class MainActivity : ComponentActivity() {
             ?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrDefault(0L) } ?: 0L
         else maxOf(localVitals.optLong("heart_rate_at"), localVitals.optLong("spo2_at"))
         val measurementStatus = if (hasReading) {
-            val time = if (capturedAt > 0L) SimpleDateFormat("HH:mm:ss", Locale("es", "MX")).format(Date(capturedAt)) else "hora no disponible"
-            if (caregiver) "Última lectura compartida $time por Internet." else "Pulsera conectada · última lectura $time."
+            val now = System.currentTimeMillis()
+            val ageMs = if (capturedAt > 0L) (now - capturedAt).coerceAtLeast(0L) else Long.MAX_VALUE
+            val ageText = when {
+                ageMs < 60_000L -> "hace menos de 1 min"
+                ageMs < 3_600_000L -> "hace ${ageMs / 60_000L} min"
+                ageMs < 86_400_000L -> "hace ${ageMs / 3_600_000L} h"
+                else -> "hace más de 24 h"
+            }
+            if (caregiver) "Última lectura: $ageText.\nDatos informativos; no constituyen diagnóstico médico."
+            else "Pulsera conectada · última lectura $ageText."
         } else if (caregiver) {
-            "Todavía no hay lecturas compartidas. La persona debe tener la pulsera conectada y el monitoreo activo."
+            "Sin datos de signos vitales compartidos."
         } else if (arduinoConnectionAvailable()) {
-            "Pulsera conectada. Coloca el dedo en el sensor y espera unos segundos para recibir pulso y SpO₂."
+            "Pulsera conectada. Coloca el dedo en el sensor para medir."
         } else {
-            store.prefs.getString("arduino_status", "").orEmpty().ifBlank { "Todavía no hay lecturas. Activa el monitoreo y acerca la pulsera UNO Q." }
+            store.prefs.getString("arduino_status", "").orEmpty().ifBlank { "Sin conexión con la pulsera UNO Q." }
         }
         patientVitalsStatus = text(measurementStatus, 14, color = muted).apply { setPadding(0, dp(10), 0, 0) }
         card.addView(patientVitalsStatus)
@@ -1399,14 +1447,25 @@ class MainActivity : ComponentActivity() {
     private fun addCaregiverSyncControls(parent: LinearLayout) {
         if (store.prefs.getString("caregiver_link_id", "").orEmpty().isBlank()) return
         val controls = card(parent, softSurface)
-        controls.addView(text("Datos compartidos", 18, true))
+        val fetchedAt = store.prefs.getLong("caregiver_shared_fetched_at", 0L)
+        val now = System.currentTimeMillis()
+        val syncAgeMs = if (fetchedAt > 0L) (now - fetchedAt).coerceAtLeast(0L) else Long.MAX_VALUE
+        val syncTimeText = when {
+            fetchedAt == 0L -> "Sin datos"
+            syncAgeMs < 60_000L -> "Última actualización: hace menos de 1 min"
+            syncAgeMs < 3_600_000L -> "Última actualización: hace ${syncAgeMs / 60_000L} min"
+            syncAgeMs < 86_400_000L -> "Última actualización: hace ${syncAgeMs / 3_600_000L} h"
+            else -> "Última actualización: hace más de 24 h"
+        }
+        controls.addView(text("SINCRONIZACIÓN", 13, true, accent))
+        controls.addView(text(syncTimeText, 17, true))
         caregiverSharedStatusView = text(
             store.prefs.getString("caregiver_shared_status", "Conexión lista para actualizar." )?.ifBlank { "Conexión lista para actualizar." }
                 ?: "Conexión lista para actualizar.",
             14, color = muted,
         ).also { controls.addView(it) }
         controls.addView(button("Actualizar ahora", false) {
-            caregiverSharedStatusView?.text = "Actualizando datos de la persona…"
+            caregiverSharedStatusView?.text = "Actualizando datos…"
             refreshCaregiverSharedData(force = true)
         })
     }
@@ -1484,13 +1543,13 @@ class MainActivity : ComponentActivity() {
         cameraRegistryRenderedRevision = store.prefs.getLong("camera_registry_revision", 0L)
         body.addView(button("←  Atrás", false) { selectTab(deviceReturnTab.coerceIn(0, 3)) })
         gap(body, 12)
-        heading(body, "CONECTAR DISPOSITIVOS", "Tus conexiones", "Los teléfonos, cámaras y cuidadores se vinculan por Internet. No necesitan compartir red.")
+        heading(body, "CONECTAR DISPOSITIVOS", "Dispositivos y enlaces", "Gestión de pulsera, cámaras y vinculación.")
         if (isCaregiver) {
             val remote = store.prefs.getString("caregiver_link_id", "").orEmpty().isNotBlank()
             val link = card(body, if (remote) mint else softSurface)
             link.addView(text(if (remote) "●  CONEXIÓN LISTA" else "○  CONECTA A UNA PERSONA", 13, true, accent))
-            link.addView(text(if (remote) "Vínculo por Internet activo" else "Sin persona vinculada", 20, true))
-            link.addView(text("Puedes usar cualquier Wi-Fi o datos móviles si tienes conexión a TzindaApp.", 15, color = muted))
+            link.addView(text(if (remote) "Vínculo activo" else "Sin persona vinculada", 20, true))
+            link.addView(text(if (remote) "Sincronización de eventos y telemetría activa." else "Escanea un código para vincularte.", 14, color = muted))
             link.addView(button("Administrar vínculo  →") { selectTab(2) })
             return
         }
@@ -1499,7 +1558,7 @@ class MainActivity : ComponentActivity() {
         phones.addView(text("Teléfono de la persona a cuidar", 16, true))
         phones.addView(text("Este teléfono · ubicación, pulsera y alertas", 14, color = muted))
         phones.addView(text("Teléfono del cuidador/a", 16, true).apply { setPadding(0, dp(12), 0, 0) })
-        phones.addView(text(if (store.prefs.getString("caregiver_owner_id", "").orEmpty().isNotBlank()) "Cuenta cuidadora vinculada por Internet" else "Se vincula por QR o código y puede estar en otra red", 14, color = muted))
+        phones.addView(text(if (store.prefs.getString("caregiver_owner_id", "").orEmpty().isNotBlank()) "Cuidador/a vinculado" else "Sin vincular", 14, color = muted))
 
         val braceletStatus = store.prefs.getString("arduino_status", "").orEmpty()
         val braceletCard = addDeviceRegistryCard(body, "Pulsera de sensores · UNO Q", "Pulso, oxígeno y detección de caídas", "wearable", store.arduinoDeviceId(),
@@ -1513,7 +1572,7 @@ class MainActivity : ComponentActivity() {
         addBraceletConnectionControls(braceletCard, includeMethodOptions = false)
         val cameraCard = card(body)
         cameraCard.addView(text("Cámaras independientes", 20, true))
-        cameraCard.addView(text("Vincula cada cámara con un QR o código. La otra instalación puede usar cualquier red con Internet.", 14, color = muted))
+        cameraCard.addView(text("Vinculación mediante código QR o de 8 dígitos.", 14, color = muted))
         val registered = store.registeredCameras()
         if (registered.isEmpty()) cameraCard.addView(text("Todavía no hay cámaras agregadas.", 14, color = muted).apply { setPadding(0, dp(10), 0, 0) })
         registered.forEach { camera ->
@@ -1844,7 +1903,7 @@ class MainActivity : ComponentActivity() {
 
         val editor = card(body)
         editor.addView(text(if (editingContacts) "Editar lista de contactos" else "Administrar contactos", 20, true))
-        editor.addView(text("Puedes guardar hasta cinco números. Si configuras un contacto de emergencia en tu perfil, se intenta llamar primero; después se sigue este orden.", 15, color = muted))
+        editor.addView(text("Hasta 5 contactos. El contacto principal se llama primero en caso de alerta.", 14, color = muted))
         if (!editingContacts) {
             editor.addView(button(if (recipients.isEmpty()) "Agregar contactos" else "Editar contactos", true) { editingContacts = true; render() })
             editor.addView(button("Importar desde mi agenda", false) { editingContacts = true; render(); handler.post { beginImport(-1) } })
@@ -1944,17 +2003,7 @@ class MainActivity : ComponentActivity() {
             val summary = store.telemetry.summary()
             localData.addView(text("Pulsera y datos del teléfono", 20, true))
             localData.addView(text(
-                "Este teléfono guarda ${summary.arduino} lecturas de la pulsera, además de ubicaciones y avisos.",
-                15,
-                color = muted,
-            ))
-            localData.addView(text(
-                "Las lecturas se comparten con el cuidador cuando hay Internet.",
-                14,
-                color = muted,
-            ))
-            localData.addView(text(
-                "Elige cómo conectar la pulsera. Bluetooth funciona sin Internet; también puedes usar la red Wi-Fi local del UNO Q.",
+                "Lecturas locales: ${summary.arduino}. Signos vitales sincronizados con cuidador.",
                 14,
                 color = muted,
             ))
@@ -2108,7 +2157,7 @@ class MainActivity : ComponentActivity() {
                         cameraActionButton?.text = "Iniciar cámara"
                         store.event("Detección con cámara IA señaló una posible caída")
                         if (isCameraRole) {
-                            toast("Aviso guardado. Se compartirá cuando haya conexión a Internet.")
+                            toast("Aviso de caída registrado.")
                         } else prepareAlert(GuardianMonitorService.ACTION_TEST)
                     }
                 },

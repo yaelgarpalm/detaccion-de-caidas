@@ -1,4 +1,4 @@
-package com.example.guardian_iot
+﻿package com.example.guardian_iot
 
 import android.net.Uri
 import org.json.JSONArray
@@ -113,9 +113,9 @@ class SupabaseBackend(
         sessions.clear()
     }
 
-    fun currentSession(): AuthSession? {
+    fun currentSession(forceRefresh: Boolean = false): AuthSession? {
         val current = sessions.read() ?: return null
-        if (current.expiresAtSeconds > System.currentTimeMillis() / 1000 + TOKEN_REFRESH_MARGIN_SECONDS) return current
+        if (!forceRefresh && current.expiresAtSeconds > System.currentTimeMillis() / 1000 + TOKEN_REFRESH_MARGIN_SECONDS) return current
         return try {
             refresh(current)
         } catch (failure: BackendFailure) {
@@ -157,15 +157,68 @@ class SupabaseBackend(
         )
     }
 
-    fun upsertDevice(deviceId: String, logicalId: String, name: String, deviceType: String, linkStatus: String) {
-        request(
-            "POST",
-            "/rest/v1/devices?on_conflict=id",
-            JSONObject().put("id", deviceId).put("logical_id", logicalId).put("name", name.take(120))
-                .put("device_type", deviceType).put("link_status", linkStatus).put("last_sync_at", isoTime(System.currentTimeMillis())),
-            needsSession = true,
-            prefer = "resolution=merge-duplicates,return=minimal",
-        )
+    fun userDevices(userId: String): JSONArray = request(
+        "GET",
+        "/rest/v1/devices?select=id,logical_id,name,device_type,link_status,last_sync_at&user_id=eq." +
+            encode(userId) + "&limit=100",
+        null,
+        true,
+    ).optJSONArray("data") ?: JSONArray()
+
+    fun registerOrUpdateDevice(
+        existingId: String?,
+        fallbackId: String,
+        logicalId: String,
+        name: String,
+        deviceType: String,
+        linkStatus: String,
+    ): String {
+        val session = requireSession()
+        val targetId = existingId?.takeIf { it.isNotBlank() }
+        if (targetId != null) {
+            request(
+                "PATCH",
+                "/rest/v1/devices?id=eq." + encode(targetId) + "&user_id=eq." + encode(session.userId),
+                JSONObject()
+                    .put("name", name.take(120))
+                    .put("device_type", deviceType)
+                    .put("link_status", linkStatus)
+                    .put("last_sync_at", isoTime(System.currentTimeMillis())),
+                needsSession = true,
+                prefer = "return=minimal",
+            )
+            return targetId
+        }
+
+        return try {
+            val result = request(
+                "POST",
+                "/rest/v1/devices",
+                JSONObject()
+                    .put("id", fallbackId)
+                    .put("user_id", session.userId)
+                    .put("logical_id", logicalId)
+                    .put("name", name.take(120))
+                    .put("device_type", deviceType)
+                    .put("link_status", linkStatus)
+                    .put("last_sync_at", isoTime(System.currentTimeMillis())),
+                needsSession = true,
+                prefer = "return=representation",
+            )
+            val returnedId = result.optJSONArray("data")?.optJSONObject(0)?.optString("id")
+                ?: result.optJSONObject("data")?.optString("id")
+                ?: result.optString("id")
+            returnedId.takeIf { it.isNotBlank() } ?: fallbackId
+        } catch (failure: BackendFailure) {
+            val matched = userDevices(session.userId)
+            val canonical = (0 until matched.length()).mapNotNull { matched.optJSONObject(it) }
+                .firstOrNull { it.optString("logical_id") == logicalId || it.optString("id") == fallbackId }
+            canonical?.optString("id")?.takeIf { it.isNotBlank() } ?: throw failure
+        }
+    }
+
+    fun upsertDevice(deviceId: String, logicalId: String, name: String, deviceType: String, linkStatus: String): String {
+        return registerOrUpdateDevice(null, deviceId, logicalId, name, deviceType, linkStatus)
     }
 
     fun upsertContact(id: String, name: String, phone: String, preferences: JSONObject) {
@@ -516,6 +569,7 @@ class SupabaseBackend(
         body: JSONObject?,
         needsSession: Boolean,
         prefer: String? = null,
+        isRetry: Boolean = false,
     ): JSONObject {
         if (!isConfigured) throw BackendFailure(BackendFailure.Category.CONFIGURATION)
         val session = if (needsSession) requireSession() else null
@@ -541,6 +595,12 @@ class SupabaseBackend(
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
             val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
             if (status !in 200..299) {
+                if (status == 401 && needsSession && !isRetry) {
+                    val refreshed = runCatching { currentSession(forceRefresh = true) }.getOrNull()
+                    if (refreshed != null) {
+                        return request(method, path, body, needsSession, prefer, isRetry = true)
+                    }
+                }
                 val errorJson = runCatching { JSONObject(text) }.getOrNull()
                 val code = (errorJson?.optString("error_code")?.takeIf { it.isNotBlank() }
                     ?: errorJson?.optString("code").orEmpty()).lowercase(Locale.ROOT)
@@ -599,7 +659,7 @@ class SupabaseBackend(
     companion object {
         private const val CONNECT_TIMEOUT_MS = 12_000
         private const val READ_TIMEOUT_MS = 15_000
-        private const val TOKEN_REFRESH_MARGIN_SECONDS = 90L
+        private const val TOKEN_REFRESH_MARGIN_SECONDS = 300L
     }
 }
 

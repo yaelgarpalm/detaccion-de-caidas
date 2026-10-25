@@ -8,7 +8,7 @@ import java.net.URI
 class AppStore(context: Context) {
     private val appContext = context.applicationContext
     val prefs = appContext.getSharedPreferences("tzinda_native", Context.MODE_PRIVATE)
-    val telemetry = LocalTelemetryDatabase(appContext)
+    val telemetry = LocalTelemetryDatabase.getInstance(appContext)
     init {
         migrate(appContext)
         telemetry.ensureContacts(contacts().map { LocalContactRecord(it.id, it.name, it.phone) })

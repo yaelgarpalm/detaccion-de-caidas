@@ -13,7 +13,7 @@ import java.time.temporal.ChronoUnit
 
 object MedicationReminderScheduler {
     fun synchronizeAll(context: Context) {
-        val database = MedicationDatabase(context)
+        val database = MedicationDatabase.getInstance(context)
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
         database.allActiveMedications().forEach { medication ->
@@ -43,7 +43,7 @@ object MedicationReminderScheduler {
 
     fun scheduleSlotAfter(context: Context, medication: Medication, time: String, afterMillis: Long): Long? {
         val next = MedicationSchedulePolicy.nextOccurrence(medication, time, afterMillis, ZoneId.systemDefault()) ?: return null
-        val intake = MedicationDatabase(context).ensureIntake(medication, next)
+        val intake = MedicationDatabase.getInstance(context).ensureIntake(medication, next)
         setAlarm(context, medication, time, intake.id, next)
         scheduleOverdueCheck(context, intake)
         return next

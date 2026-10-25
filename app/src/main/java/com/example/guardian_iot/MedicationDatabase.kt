@@ -281,7 +281,15 @@ class MedicationDatabase(context: Context) : SQLiteOpenHelper(
         updatedAtMillis = getLong(getColumnIndexOrThrow("updated_at")), syncState = getString(getColumnIndexOrThrow("sync_state")),
     )
 
-    companion object { const val OVERDUE_AFTER_MS = 60 * 60 * 1000L }
+    companion object {
+        const val OVERDUE_AFTER_MS = 60 * 60 * 1000L
+
+        @Volatile private var instance: MedicationDatabase? = null
+        fun getInstance(context: Context): MedicationDatabase =
+            instance ?: synchronized(this) {
+                instance ?: MedicationDatabase(context.applicationContext).also { instance = it }
+            }
+    }
 }
 
 internal fun String?.toEpochMillisOrNull(): Long? = this?.takeIf(String::isNotBlank)?.let { value ->

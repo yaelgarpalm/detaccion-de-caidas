@@ -1,4 +1,4 @@
-package com.example.guardian_iot
+﻿package com.example.guardian_iot
 
 import android.app.job.JobInfo
 import android.app.job.JobParameters
@@ -13,17 +13,35 @@ import java.util.concurrent.Future
 
 object SyncScheduler {
     private const val JOB_ID = 712045
+    private val immediateExecutor = Executors.newSingleThreadExecutor()
+    @Volatile private var immediateSyncInFlight = false
 
-    fun enqueue(context: Context) {
+    fun enqueue(context: Context, immediate: Boolean = true) {
         val app = context.applicationContext
-        if (!SupabaseBackend(EncryptedSessionStore(app)).isConfigured || EncryptedSessionStore(app).read() == null) return
-        val scheduler = app.getSystemService(JobScheduler::class.java) ?: return
-        val job = JobInfo.Builder(JOB_ID, ComponentName(app, SupabaseSyncJobService::class.java))
-            .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-            .setPersisted(true)
-            .setBackoffCriteria(30_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
-            .build()
-        scheduler.schedule(job)
+        val sessions = EncryptedSessionStore(app)
+        val backend = SupabaseBackend(sessions)
+        if (!backend.isConfigured || sessions.read() == null) return
+        val scheduler = app.getSystemService(JobScheduler::class.java)
+        if (scheduler != null) {
+            val job = JobInfo.Builder(JOB_ID, ComponentName(app, SupabaseSyncJobService::class.java))
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setPersisted(true)
+                .setBackoffCriteria(30_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
+                .build()
+            scheduler.schedule(job)
+        }
+        if (immediate && !immediateSyncInFlight) {
+            immediateSyncInFlight = true
+            immediateExecutor.execute {
+                try {
+                    SupabaseSyncRunner(app).run()
+                } catch (t: Throwable) {
+                    android.util.Log.w("SyncScheduler", "Immediate sync failed: ${t.message}")
+                } finally {
+                    immediateSyncInFlight = false
+                }
+            }
+        }
     }
 }
 
@@ -73,17 +91,80 @@ private class SupabaseSyncRunner(context: Context) {
         var hasError = false
 
         try {
-            backend.upsertDevice(store.localDeviceId(), store.localDeviceId(), "Teléfono TzindaApp", "phone", "not_applicable")
-            backend.upsertDevice(store.fallSensorDeviceId(), "fall-sensor-phone", "Sensor de caídas del teléfono", "fall_sensor", "unknown")
-            backend.upsertDevice(store.wearableDeviceId(), "wearable-sensors", "Pulsera y sensores biométricos", "wearable", "unknown")
-            backend.upsertDevice(store.arduinoDeviceId(), "arduino-uno-q", "Arduino UNO Q · puente de datos", "arduino", "unknown")
-            backend.upsertDevice(store.cameraDeviceId(), "camera-phone-local", "Cámara IA de este teléfono", "camera", "not_applicable")
-            store.registeredCameras().forEach { camera ->
-                backend.upsertDevice(camera.id, "camera-${camera.id}", camera.name, "camera", "unlinked")
+            val existing = backend.userDevices(session.userId)
+            val byLogicalId = mutableMapOf<String, String>()
+            val allExistingIds = mutableSetOf<String>()
+            for (i in 0 until existing.length()) {
+                val dev = existing.optJSONObject(i) ?: continue
+                val devId = dev.optString("id")
+                val logId = dev.optString("logical_id")
+                if (devId.isNotBlank()) allExistingIds.add(devId)
+                if (logId.isNotBlank() && devId.isNotBlank()) {
+                    byLogicalId[logId] = devId
+                }
             }
-            store.prefs.edit().putBoolean("device_sync_configured", true).apply()
-        } catch (_: BackendFailure) {
+
+            val existingPhoneId = byLogicalId["phone-primary"]
+                ?: (0 until existing.length()).mapNotNull { existing.optJSONObject(it) }
+                    .firstOrNull { it.optString("device_type") == "phone" }?.optString("id")
+            val phoneFallbackId = existingPhoneId
+                ?: if (allExistingIds.contains(store.localDeviceId())) java.util.UUID.randomUUID().toString() else store.localDeviceId()
+            val phoneLogical = if (existingPhoneId != null) {
+                (0 until existing.length()).mapNotNull { existing.optJSONObject(it) }
+                    .firstOrNull { it.optString("id") == existingPhoneId }?.optString("logical_id")?.takeIf { it.isNotBlank() } ?: "phone-primary"
+            } else "phone-primary"
+            val phoneId = backend.registerOrUpdateDevice(
+                existingPhoneId, phoneFallbackId, phoneLogical, "Teléfono TzindaApp", "phone", "not_applicable"
+            )
+
+            val existingFallId = byLogicalId["fall-sensor-phone"]
+            val fallFallback = existingFallId
+                ?: if (allExistingIds.contains(store.fallSensorDeviceId())) java.util.UUID.randomUUID().toString() else store.fallSensorDeviceId()
+            val fallId = backend.registerOrUpdateDevice(
+                existingFallId, fallFallback, "fall-sensor-phone", "Sensor de caídas del teléfono", "fall_sensor", "unknown"
+            )
+
+            val existingWearId = byLogicalId["wearable-sensors"]
+            val wearFallback = existingWearId
+                ?: if (allExistingIds.contains(store.wearableDeviceId())) java.util.UUID.randomUUID().toString() else store.wearableDeviceId()
+            val wearId = backend.registerOrUpdateDevice(
+                existingWearId, wearFallback, "wearable-sensors", "Pulsera y sensores biométricos", "wearable", "unknown"
+            )
+
+            val existingArdId = byLogicalId["arduino-uno-q"]
+            val ardFallback = existingArdId
+                ?: if (allExistingIds.contains(store.arduinoDeviceId())) java.util.UUID.randomUUID().toString() else store.arduinoDeviceId()
+            val ardId = backend.registerOrUpdateDevice(
+                existingArdId, ardFallback, "arduino-uno-q", "Arduino UNO Q · puente de datos", "arduino", "unknown"
+            )
+
+            val existingCamId = byLogicalId["camera-phone-local"]
+            val camFallback = existingCamId
+                ?: if (allExistingIds.contains(store.cameraDeviceId())) java.util.UUID.randomUUID().toString() else store.cameraDeviceId()
+            val camId = backend.registerOrUpdateDevice(
+                existingCamId, camFallback, "camera-phone-local", "Cámara IA de este teléfono", "camera", "not_applicable"
+            )
+
+            store.registeredCameras().forEach { camera ->
+                val existingReg = byLogicalId["camera-${camera.id}"]
+                val regFallback = existingReg ?: camera.id
+                backend.registerOrUpdateDevice(
+                    existingReg, regFallback, "camera-${camera.id}", camera.name, "camera", "unlinked"
+                )
+            }
+
+            store.prefs.edit()
+                .putString("local_device_id", phoneId)
+                .putString("fall_sensor_device_id", fallId)
+                .putString("wearable_device_id", wearId)
+                .putString("arduino_device_id", ardId)
+                .putString("local_camera_device_id", camId)
+                .putBoolean("device_sync_configured", true)
+                .apply()
+        } catch (error: Exception) {
+            android.util.Log.w("SyncRunner", "Device registration warning: ${error.message}", error)
             hasError = true
+            store.prefs.edit().putBoolean("device_sync_configured", true).apply()
         }
 
         try { syncProfile() } catch (_: BackendFailure) { hasError = true }
@@ -92,7 +173,8 @@ private class SupabaseSyncRunner(context: Context) {
             val medicationOwner = if (caregiver) store.prefs.getString("caregiver_owner_id", "").orEmpty() else session.userId
             if (medicationOwner.isNotBlank()) {
                 try { MedicationRepository(app, backend, store).synchronize(medicationOwner, readOnly = caregiver) }
-                catch (_: BackendFailure) { hasError = true }
+                catch (f: BackendFailure) { if (f.status != 404) hasError = true }
+                catch (_: Exception) {}
             }
         }
         if (store.prefs.getBoolean("device_sync_configured", false)) {
@@ -193,10 +275,13 @@ private class SupabaseSyncRunner(context: Context) {
     }
 
     private inline fun syncEvents(onError: () -> Unit) {
+        val ardId = store.arduinoDeviceId()
+        val phoneId = store.localDeviceId()
         database.pendingFallEvents().forEach { event ->
             try {
+                val targetDeviceId = if (event.source == "arduino") ardId else phoneId
                 val pending = PendingFallEvent(
-                    event.id, event.incidentId, event.deviceId, event.occurredAtMillis, event.source,
+                    event.id, event.incidentId, targetDeviceId, event.occurredAtMillis, event.source,
                     event.classification, event.confirmationStatus, event.summary,
                 )
                 val cameraAccountEvent = store.role() == AppStore.ROLE_CAMERA && event.source == "camera_ai"
@@ -236,10 +321,13 @@ private class SupabaseSyncRunner(context: Context) {
     }
 
     private inline fun syncMeasurements(onError: () -> Unit) {
+        val ardId = store.arduinoDeviceId()
+        val phoneId = store.localDeviceId()
         database.pendingMeasurements().forEach { reading ->
             try {
+                val targetDeviceId = if (reading.source == LocalTelemetryDatabase.SOURCE_ARDUINO) ardId else phoneId
                 backend.insertMeasurement(
-                    reading.id, if (reading.source == LocalTelemetryDatabase.SOURCE_ARDUINO) store.arduinoDeviceId() else null, reading.type, reading.value, reading.unit,
+                    reading.id, targetDeviceId, reading.type, reading.value, reading.unit,
                     reading.capturedAtMillis, reading.source, reading.isValid,
                 )
                 database.markMeasurementSynced(reading.id)

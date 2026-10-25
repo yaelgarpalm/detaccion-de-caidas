@@ -1,4 +1,4 @@
-package com.example.guardian_iot
+﻿package com.example.guardian_iot
 
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.realtime.PostgresAction
@@ -16,16 +16,23 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import android.util.Log
 
-/** Streams RLS-authorized measurements and fall events for one linked wearer account. */
+/**
+ * Streams RLS-authorized measurements and fall events for one linked wearer account.
+ *
+ * Each call to [start] creates a fresh CoroutineScope so the instance can be
+ * restarted after [stop] without needing to create a new object.
+ */
 class CaregiverHealthRealtime(
     private val backend: SupabaseBackend,
     private val sessions: EncryptedSessionStore,
     private val onMeasurement: (JSONObject) -> Unit,
     private val onFallEvent: (JSONObject) -> Unit,
     private val onPhoneMotion: (JSONObject) -> Unit,
+    private val onRealtimeError: ((String) -> Unit)? = null,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var activeScope: CoroutineScope? = null
     @Volatile private var listeningKey: String? = null
     private var measurementChannel: io.github.jan.supabase.realtime.RealtimeChannel? = null
     private var fallChannel: io.github.jan.supabase.realtime.RealtimeChannel? = null
@@ -33,15 +40,24 @@ class CaregiverHealthRealtime(
     private var client: io.github.jan.supabase.SupabaseClient? = null
 
     fun start(ownerId: String, deviceId: String?) {
-        if (ownerId.isBlank() || listeningKey != null || !backend.isConfigured) return
+        if (ownerId.isBlank() || !backend.isConfigured) return
         val key = "$ownerId:${deviceId.orEmpty()}"
+        if (listeningKey == key) return
+        if (listeningKey != null) {
+            stop()
+        }
         listeningKey = key
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        activeScope = scope
         scope.launch {
             try {
-                val session = sessions.read() ?: return@launch
+                val session = backend.currentSession() ?: sessions.read() ?: run {
+                    onRealtimeError?.invoke("Sin sesión activa para Realtime.")
+                    return@launch
+                }
                 val supabase = createSupabaseClient(backend.realtimeUrl(), backend.realtimeKey()) {
                     httpEngine = CIO.create()
-                    accessToken = { sessions.read()?.accessToken }
+                    accessToken = { backend.currentSession()?.accessToken ?: sessions.read()?.accessToken }
                     install(Realtime)
                 }
                 client = supabase
@@ -94,8 +110,9 @@ class CaregiverHealthRealtime(
                 phoneMotion.subscribe(blockUntilSubscribed = true)
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
-                // The initial REST snapshot and the next refresh remain available as fallback.
+            } catch (e: Exception) {
+                Log.w("CaregiverHealthRealtime", "Realtime subscription failed: ${e.javaClass.simpleName}")
+                onRealtimeError?.invoke("Error de conexión Realtime: ${e.javaClass.simpleName}")
             }
         }
     }
@@ -106,13 +123,15 @@ class CaregiverHealthRealtime(
         val oldFalls = fallChannel
         val oldPhoneMotion = phoneMotionChannel
         val oldClient = client
-        scope.launch {
+        val oldScope = activeScope
+        measurementChannel = null; fallChannel = null; phoneMotionChannel = null; client = null; activeScope = null
+        oldScope?.launch {
             runCatching { oldMeasurements?.unsubscribe() }
             runCatching { oldFalls?.unsubscribe() }
             runCatching { oldPhoneMotion?.unsubscribe() }
             runCatching { oldClient?.realtime?.disconnect() }
             runCatching { oldClient?.close() }
-        }.invokeOnCompletion { scope.cancel() }
+        }?.invokeOnCompletion { oldScope.cancel() }
     }
 
     private fun PostgresAction.recordOrNull(): Any? = when (this) {

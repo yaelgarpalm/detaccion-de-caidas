@@ -1,4 +1,4 @@
-package com.example.guardian_iot
+﻿package com.example.guardian_iot
 
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.realtime.PostgresAction
@@ -16,27 +16,43 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import android.util.Log
 
-/** Receives RLS-filtered location changes over Supabase Realtime while the caregiver screen is open. */
+/**
+ * Receives RLS-filtered location changes over Supabase Realtime while the caregiver screen is open.
+ *
+ * Each call to [start] creates a fresh CoroutineScope so the instance can be
+ * restarted after [stop] without needing to create a new object.
+ */
 class CaregiverLocationRealtime(
     private val backend: SupabaseBackend,
     private val sessions: EncryptedSessionStore,
     private val onLocation: (JSONObject?) -> Unit,
+    private val onRealtimeError: ((String) -> Unit)? = null,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var activeScope: CoroutineScope? = null
     @Volatile private var listeningDeviceId: String? = null
     private var channel: io.github.jan.supabase.realtime.RealtimeChannel? = null
     private var client: io.github.jan.supabase.SupabaseClient? = null
 
     fun start(deviceId: String) {
-        if (deviceId.isBlank() || listeningDeviceId == deviceId || !backend.isConfigured) return
+        if (deviceId.isBlank() || !backend.isConfigured) return
+        if (listeningDeviceId == deviceId) return
+        if (listeningDeviceId != null) {
+            stop()
+        }
         listeningDeviceId = deviceId
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        activeScope = scope
         scope.launch {
             try {
-                val session = sessions.read() ?: return@launch
+                val session = backend.currentSession() ?: sessions.read() ?: run {
+                    onRealtimeError?.invoke("Sin sesión activa para Realtime.")
+                    return@launch
+                }
                 val supabase = createSupabaseClient(backend.realtimeUrl(), backend.realtimeKey()) {
                     httpEngine = CIO.create()
-                    accessToken = { sessions.read()?.accessToken }
+                    accessToken = { backend.currentSession()?.accessToken ?: sessions.read()?.accessToken }
                     install(Realtime)
                 }
                 client = supabase
@@ -61,8 +77,9 @@ class CaregiverLocationRealtime(
                 activeChannel.subscribe(blockUntilSubscribed = true)
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
-                // The REST snapshot remains available when Realtime cannot connect.
+            } catch (e: Exception) {
+                Log.w("CaregiverLocationRealtime", "Realtime subscription failed: ${e.javaClass.simpleName}")
+                onRealtimeError?.invoke("Error de conexión Realtime (ubicación): ${e.javaClass.simpleName}")
             }
         }
     }
@@ -71,10 +88,12 @@ class CaregiverLocationRealtime(
         listeningDeviceId = null
         val oldChannel = channel
         val oldClient = client
-        scope.launch {
+        val oldScope = activeScope
+        channel = null; client = null; activeScope = null
+        oldScope?.launch {
             runCatching { oldChannel?.unsubscribe() }
             runCatching { oldClient?.realtime?.disconnect() }
             runCatching { oldClient?.close() }
-        }.invokeOnCompletion { scope.cancel() }
+        }?.invokeOnCompletion { oldScope.cancel() }
     }
 }

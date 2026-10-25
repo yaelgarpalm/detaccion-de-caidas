@@ -20,7 +20,7 @@ class MedicationReminderReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         Thread {
             try {
-                val database = MedicationDatabase(context)
+                val database = MedicationDatabase.getInstance(context)
                 when (intent.action) {
                     ACTION_FIRE -> showReminder(context, database, intakeId, intent.getBooleanExtra(EXTRA_IS_SNOOZE, false))
                     ACTION_MARK_OVERDUE -> {

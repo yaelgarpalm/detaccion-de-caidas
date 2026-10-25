@@ -509,6 +509,12 @@ class LocalTelemetryDatabase(context: Context) : SQLiteOpenHelper(
     }
 
     companion object {
+        @Volatile private var instance: LocalTelemetryDatabase? = null
+        fun getInstance(context: Context): LocalTelemetryDatabase =
+            instance ?: synchronized(this) {
+                instance ?: LocalTelemetryDatabase(context.applicationContext).also { instance = it }
+            }
+
         private const val DATABASE_NAME = "tzinda_local_telemetry.db"
         private const val DATABASE_VERSION = 2
         private const val RETENTION_MS = 30L * 24 * 60 * 60 * 1000
