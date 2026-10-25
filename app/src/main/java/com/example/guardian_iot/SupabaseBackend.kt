@@ -183,6 +183,64 @@ class SupabaseBackend(
         request("DELETE", "/rest/v1/trusted_contacts?id=eq." + encode(id), null, needsSession = true)
     }
 
+    fun medicationRecords(ownerUserId: String): JSONArray = request(
+        "GET",
+        "/rest/v1/medications?select=id,owner_user_id,name,prescribed_dose,presentation,frequency,schedule_times,start_date,end_date,instructions,is_active,share_with_caregiver,is_deleted,created_at,updated_at" +
+            "&owner_user_id=eq." + encode(ownerUserId) + "&order=updated_at.desc&limit=500",
+        null,
+        true,
+    ).optJSONArray("data") ?: JSONArray()
+
+    fun upsertMedication(record: Medication) {
+        val body = JSONObject()
+            .put("id", record.id)
+            .put("owner_user_id", record.ownerUserId)
+            .put("name", record.name)
+            .put("prescribed_dose", record.prescribedDose)
+            .put("presentation", record.presentation)
+            .put("frequency", record.frequency)
+            .put("schedule_times", JSONArray(record.scheduleTimes))
+            .put("start_date", record.startDate)
+            .put("end_date", record.endDate ?: JSONObject.NULL)
+            .put("instructions", record.instructions)
+            .put("is_active", record.isActive)
+            .put("share_with_caregiver", record.shareWithCaregiver)
+            .put("is_deleted", record.isDeleted)
+            .put("created_at", isoTime(record.createdAtMillis))
+            .put("updated_at", isoTime(record.updatedAtMillis))
+        request(
+            "POST", "/rest/v1/medications?on_conflict=id", body, true,
+            prefer = "resolution=merge-duplicates,return=minimal",
+        )
+    }
+
+    fun medicationIntakeRecords(ownerUserId: String): JSONArray = request(
+        "GET",
+        "/rest/v1/medication_intakes?select=id,medication_id,owner_user_id,schedule_instance_id,scheduled_at,action_at,status,snoozed_until,snooze_count,created_at,updated_at" +
+            "&owner_user_id=eq." + encode(ownerUserId) + "&order=scheduled_at.desc&limit=1000",
+        null,
+        true,
+    ).optJSONArray("data") ?: JSONArray()
+
+    fun upsertMedicationIntake(record: MedicationIntake) {
+        val body = JSONObject()
+            .put("id", record.id)
+            .put("medication_id", record.medicationId)
+            .put("owner_user_id", record.ownerUserId)
+            .put("schedule_instance_id", record.scheduleInstanceId)
+            .put("scheduled_at", isoTime(record.scheduledAtMillis))
+            .put("action_at", record.actionAtMillis?.let(::isoTime) ?: JSONObject.NULL)
+            .put("status", record.status)
+            .put("snoozed_until", record.snoozedUntilMillis?.let(::isoTime) ?: JSONObject.NULL)
+            .put("snooze_count", record.snoozeCount)
+            .put("created_at", isoTime(record.createdAtMillis))
+            .put("updated_at", isoTime(record.updatedAtMillis))
+        request(
+            "POST", "/rest/v1/medication_intakes?on_conflict=id", body, true,
+            prefer = "resolution=merge-duplicates,return=minimal",
+        )
+    }
+
     fun insertFallEvent(event: PendingFallEvent) {
         val body = JSONObject()
             .put("id", event.id)

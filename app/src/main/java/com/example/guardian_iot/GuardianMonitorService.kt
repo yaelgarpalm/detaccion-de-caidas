@@ -933,7 +933,13 @@ class SmsStatusReceiver : BroadcastReceiver() {
 
 class GuardianBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        val action = intent.action ?: return
+        val restartMonitor = action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_MY_PACKAGE_REPLACED
+        val rescheduleReminders = restartMonitor || action == Intent.ACTION_TIME_CHANGED || action == Intent.ACTION_TIMEZONE_CHANGED ||
+            action == Intent.ACTION_DATE_CHANGED || action == AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED
+        if (!rescheduleReminders) return
+        runCatching { MedicationReminderScheduler.synchronizeAll(context) }
+        if (!restartMonitor) return
         val store = AppStore(context)
         if (!store.prefs.getBoolean("monitor_enabled", false)) return
         if (context.checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED ||

@@ -13,6 +13,8 @@ La vinculación de persona, cuidador y cámara usa Supabase por Internet; no req
 
 La pulsera envía pulso, SpO₂ y detecciones de golpe/caída. El teléfono protegido inicia una cuenta regresiva de 20 segundos; si no se cancela, solicita SMS y llamada a los contactos configurados. Cuando varias fuentes reportan el mismo incidente, la app deduplica el aviso para evitar llamadas repetidas.
 
+**Medicamentos:** la persona protegida puede guardar medicamentos, dosis indicadas y horarios en una base local, recibir recordatorios de Android sin Internet, confirmar/posponer/omitir tomas y consultar el historial. La sincronización de cada registro con Supabase incluye una opción de compartir desactivada por defecto. Un cuidador vinculado solo puede leer los medicamentos que se hayan compartido; no puede editarlos ni confirmar tomas.
+
 ## Supabase
 
 El backend incluye autenticación, perfiles, vínculos, dispositivos, mediciones, eventos y Realtime con políticas RLS. La configuración y despliegue están descritos en [docs/supabase-backend.md](docs/supabase-backend.md); las migraciones están en [supabase/migrations](supabase/migrations).

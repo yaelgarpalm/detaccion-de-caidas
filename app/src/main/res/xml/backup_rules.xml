@@ -3,4 +3,7 @@
     <exclude domain="database" path="tzinda_local_telemetry.db" />
     <exclude domain="database" path="tzinda_local_telemetry.db-wal" />
     <exclude domain="database" path="tzinda_local_telemetry.db-shm" />
+    <exclude domain="database" path="tzinda_medications.db" />
+    <exclude domain="database" path="tzinda_medications.db-wal" />
+    <exclude domain="database" path="tzinda_medications.db-shm" />
 </full-backup-content>

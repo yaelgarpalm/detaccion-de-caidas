@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var store: AppStore
     private lateinit var sessions: EncryptedSessionStore
     private lateinit var backend: SupabaseBackend
+    private lateinit var medicationRepository: MedicationRepository
     private lateinit var frame: FrameLayout
     private lateinit var root: View
     private var tab = 0
@@ -62,6 +63,7 @@ class MainActivity : ComponentActivity() {
     private var profileReturnTab = 0
     private var cameraReturnTab = 0
     private var deviceReturnTab = 0
+    private var medicationReturnTab = 0
     private var activityFilter = 0
     private var activitySection = 0
     private var patientPulseValue: TextView? = null
@@ -148,6 +150,7 @@ class MainActivity : ComponentActivity() {
         store = AppStore(this)
         sessions = EncryptedSessionStore(this)
         backend = SupabaseBackend(sessions)
+        medicationRepository = MedicationRepository(this, backend, store)
         authMode = savedInstanceState?.getString("auth_mode")?.let { runCatching { AuthMode.valueOf(it) }.getOrNull() }
             ?: if (backend.isConfigured && sessions.read() == null && !store.prefs.getBoolean("local_only_mode", false)) AuthMode.LOGIN else null
         if (dark) setTheme(R.style.AppTheme_Dark)
@@ -157,6 +160,7 @@ class MainActivity : ComponentActivity() {
         profileReturnTab = savedInstanceState?.getInt("profile_return_tab", 0) ?: 0
         cameraReturnTab = savedInstanceState?.getInt("camera_return_tab", 0) ?: 0
         deviceReturnTab = savedInstanceState?.getInt("device_return_tab", 0) ?: 0
+        medicationReturnTab = savedInstanceState?.getInt("medication_return_tab", 0) ?: 0
         activityFilter = savedInstanceState?.getInt("activity_filter", 0) ?: 0
         activitySection = savedInstanceState?.getInt("activity_section", 0) ?: 0
         editingContacts = savedInstanceState?.getBoolean("editing_contacts", false) ?: false
@@ -201,7 +205,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onSaveInstanceState(out: Bundle) {
         saveDrafts()
-        out.putInt("tab", tab); out.putInt("profile_return_tab", profileReturnTab); out.putInt("camera_return_tab", cameraReturnTab); out.putInt("device_return_tab", deviceReturnTab)
+        out.putInt("tab", tab); out.putInt("profile_return_tab", profileReturnTab); out.putInt("camera_return_tab", cameraReturnTab); out.putInt("device_return_tab", deviceReturnTab); out.putInt("medication_return_tab", medicationReturnTab)
         out.putInt("activity_filter", activityFilter); out.putInt("activity_section", activitySection); out.putBoolean("editing_contacts", editingContacts)
         out.putString("action", pendingAction); out.putInt("import_slot", importSlot)
         out.putBoolean("sms_request_pending", smsRequestInFlight)
@@ -213,6 +217,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onResume() {
         super.onResume(); handler.post(live); refreshPermissionUi(); updateServiceIfActive()
+        MedicationReminderScheduler.synchronizeAll(this)
         if (tab == CAMERA_TAB && cameraRequested && has(Manifest.permission.CAMERA)) launchCameraDetection()
     }
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -596,6 +601,10 @@ class MainActivity : ComponentActivity() {
         if (tab != DEVICE_TAB) deviceReturnTab = if (tab in 0..3) tab else 0
         selectTab(DEVICE_TAB)
     }
+    private fun openMedicationScreen() {
+        if (tab != MEDICATIONS_TAB) medicationReturnTab = if (tab in 0..3) tab else 0
+        selectTab(MEDICATIONS_TAB)
+    }
     private fun openProfile() {
         if (tab != 4) profileReturnTab = if (tab == CAMERA_TAB) cameraReturnTab else tab
         selectTab(4)
@@ -603,6 +612,7 @@ class MainActivity : ComponentActivity() {
     override fun onBackPressed() {
         if (tab == CAMERA_TAB) selectTab(cameraReturnTab.coerceIn(0, 3))
         else if (tab == DEVICE_TAB) selectTab(deviceReturnTab.coerceIn(0, 3))
+        else if (tab == MEDICATIONS_TAB) selectTab(medicationReturnTab.coerceIn(0, 3))
         else if (tab == 4) selectTab(profileReturnTab.coerceIn(0, 3)) else super.onBackPressed()
     }
     private fun saveDrafts() {
@@ -623,7 +633,7 @@ class MainActivity : ComponentActivity() {
         val navigation = findViewById<LinearLayout>(R.id.navigation)
         val onboarding = tab == ROLE_TAB
         appBar.visibility = if (onboarding || tab == CAMERA_TAB) View.GONE else View.VISIBLE
-        navigation.visibility = if (onboarding || tab == DEVICE_TAB || tab == CAMERA_TAB) View.GONE else View.VISIBLE
+        navigation.visibility = if (onboarding || tab == DEVICE_TAB || tab == CAMERA_TAB || tab == MEDICATIONS_TAB) View.GONE else View.VISIBLE
         window.decorView.systemUiVisibility = if (tab == CAMERA_TAB) {
             View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -639,7 +649,7 @@ class MainActivity : ComponentActivity() {
             isCameraRole -> listOf("Cámara", "Eventos", "Vincular", "Ajustes")
             else -> listOf("Inicio", "Actividad", "Contactos", "Ajustes")
         }
-        appBarSubtitle?.text = when (tab) { 0 -> tabLabels[0]; 1 -> tabLabels[1]; 2 -> tabLabels[2]; 3 -> tabLabels[3]; CAMERA_TAB -> "Detección IA"; DEVICE_TAB -> "Dispositivos"; 4 -> "Mi perfil"; else -> "Inicio" }
+        appBarSubtitle?.text = when (tab) { 0 -> tabLabels[0]; 1 -> tabLabels[1]; 2 -> tabLabels[2]; 3 -> tabLabels[3]; CAMERA_TAB -> "Detección IA"; DEVICE_TAB -> "Dispositivos"; MEDICATIONS_TAB -> "Medicamentos"; 4 -> "Mi perfil"; else -> "Inicio" }
         listOf(R.id.nav_home, R.id.nav_activity, R.id.nav_contacts, R.id.nav_settings).forEachIndexed { index, id ->
             findViewById<Button>(id).apply {
                 text = tabLabels[index]
@@ -668,6 +678,14 @@ class MainActivity : ComponentActivity() {
             3 -> settings(body)
             CAMERA_TAB -> cameraScreen(body)
             DEVICE_TAB -> deviceLinkScreen(body)
+            MEDICATIONS_TAB -> {
+                val linkedOwner = store.prefs.getString("caregiver_owner_id", "").orEmpty()
+                val isLinkedCaregiver = isCaregiver && sessions.read() != null && store.prefs.getString("caregiver_link_id", "").orEmpty().isNotBlank() && linkedOwner.isNotBlank()
+                val ownerId = if (isCaregiver) linkedOwner.takeIf { isLinkedCaregiver }.orEmpty() else medicationRepository.currentOwnerScope()
+                MedicationModuleUi(this, medicationRepository, ownerId, isCaregiver, dark) {
+                    selectTab(medicationReturnTab.coerceIn(0, 3))
+                }.render(body)
+            }
             else -> profile(body)
         }
         refreshLive(); refreshPermissionUi()
@@ -714,7 +732,7 @@ class MainActivity : ComponentActivity() {
             form.addView(authPrivacy)
             form.addView(button("Leer aviso de privacidad y uso", false) {
                 AlertDialog.Builder(this).setTitle("Privacidad y uso de TzindaApp")
-                    .setMessage("Al iniciar sesión, Supabase puede almacenar tu nombre y rol, contactos de confianza con teléfono, eventos de caída y estados técnicos de SMS/llamada, y lecturas válidas de pulso/SpO₂ recibidas del UNO Q. Estos datos se comparten solo con cuentas que vincules mediante un código temporal.\n\nLa ubicación, domicilio, fecha de nacimiento, datos médicos, video e historial crudo de movimiento no se sincronizan. La app conserva las funciones locales sin Internet. TzindaApp es experimental y no sustituye los servicios de emergencia ni la atención médica. Puedes cerrar sesión o solicitar la eliminación de la cuenta y los datos remotos desde Ajustes.")
+                    .setMessage("Al iniciar sesión, Supabase puede almacenar tu nombre y rol, contactos de confianza con teléfono, eventos de caída y estados técnicos de SMS/llamada, lecturas válidas de pulso/SpO₂ del UNO Q y la ubicación en vivo cuando la autorizas y el monitoreo está activo.\n\nSi registras medicamentos, el nombre, dosis indicada, presentación, horarios, instrucciones e historial de tomas se guardan en este teléfono y se sincronizan con Supabase. Cada medicamento permanece privado hasta que actives “Compartir con mi cuidador/a”; solo una cuenta con vínculo activo podrá consultarlo. El cuidador no puede editarlo ni confirmar tomas. Puedes retirar el permiso de compartir editando el registro. TzindaApp no recomienda ni modifica dosis.\n\nEl domicilio, fecha de nacimiento, video y muestras crudas de movimiento no se sincronizan. Las funciones locales siguen disponibles sin Internet. TzindaApp es experimental y no sustituye servicios de emergencia ni atención médica. Puedes cerrar sesión o solicitar la eliminación de la cuenta y los datos remotos desde Ajustes.")
                     .setPositiveButton("Entendido", null).show()
             })
         }
@@ -998,6 +1016,11 @@ class MainActivity : ComponentActivity() {
         ).also { sensorCard.addView(it) }
         sensorCard.addView(button("Ver signos vitales", false) { activitySection = 0; selectTab(1) })
 
+        val medicationCard = card(body, softSurface)
+        medicationCard.addView(text("Medicamentos", 20, true))
+        medicationCard.addView(text("Registra los horarios indicados y recibe recordatorios aunque no haya Internet.", 15, color = muted))
+        medicationCard.addView(button("Abrir mis medicamentos  →") { openMedicationScreen() })
+
         val aiCard = card(body, softSurface)
         aiCard.addView(text("CÁMARA OPCIONAL", 13, true, accent))
         aiCard.addView(text("Revisa el espacio cuando lo necesites", 20, true))
@@ -1078,6 +1101,10 @@ class MainActivity : ComponentActivity() {
         status.addView(button(if (linked) "Administrar vínculo" else "Vincular persona protegida  →") { selectTab(2) })
         addSharedLocationCard(body)
         vitalsUnavailableCard(body, caregiver = true)
+        val medicationCard = card(body, softSurface)
+        medicationCard.addView(text("Medicamentos compartidos", 20, true))
+        medicationCard.addView(text(if (linked) "Consulta los medicamentos de la persona vinculada. El control de horarios y confirmaciones permanece en su teléfono." else "Vincula a una persona para revisar los medicamentos que haya autorizado compartir.", 15, color = muted))
+        medicationCard.addView(button("Consultar medicamentos  →") { openMedicationScreen() })
         addSharedPhoneMotionCard(body)
         addCaregiverSyncControls(body)
 
@@ -2613,6 +2640,7 @@ class MainActivity : ComponentActivity() {
         private const val CAMERA_TAB = 5
         private const val ROLE_TAB = 6
         private const val DEVICE_TAB = 7
+        private const val MEDICATIONS_TAB = 8
         private const val REQUEST_CAMERA = 108
         private const val REQUEST_CONTACTS = 101
         private const val REQUEST_ALERT = 102

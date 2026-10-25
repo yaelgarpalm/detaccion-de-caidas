@@ -87,6 +87,14 @@ private class SupabaseSyncRunner(context: Context) {
         }
 
         try { syncProfile() } catch (_: BackendFailure) { hasError = true }
+        if (store.role() != AppStore.ROLE_CAMERA) {
+            val caregiver = store.role() == AppStore.ROLE_CAREGIVER
+            val medicationOwner = if (caregiver) store.prefs.getString("caregiver_owner_id", "").orEmpty() else session.userId
+            if (medicationOwner.isNotBlank()) {
+                try { MedicationRepository(app, backend, store).synchronize(medicationOwner, readOnly = caregiver) }
+                catch (_: BackendFailure) { hasError = true }
+            }
+        }
         if (store.prefs.getBoolean("device_sync_configured", false)) {
             try { syncContacts() } catch (_: BackendFailure) { hasError = true }
             syncEvents { hasError = true }
