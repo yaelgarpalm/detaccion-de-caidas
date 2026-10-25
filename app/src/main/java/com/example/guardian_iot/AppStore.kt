@@ -153,7 +153,7 @@ class AppStore(context: Context) {
         return upsertRegisteredCamera(java.util.UUID.randomUUID().toString(), cleaned)
     }
 
-    fun upsertRegisteredCamera(id: String, name: String): RegisteredCamera {
+    fun upsertRegisteredCamera(id: String, name: String, enqueueSync: Boolean = true): RegisteredCamera {
         require(runCatching { java.util.UUID.fromString(id) }.isSuccess) { "Identificador de cámara inválido." }
         val cleaned = name.trim().take(120)
         require(cleaned.isNotBlank()) { "Escribe un nombre para la cámara." }
@@ -164,23 +164,35 @@ class AppStore(context: Context) {
             rows.filterNot { it.id == id }.forEach { put(JSONObject().put("id", it.id).put("name", it.name)) }
             put(JSONObject().put("id", camera.id).put("name", camera.name))
         }
-        check(prefs.edit().putString("registered_cameras", json.toString()).putLong("camera_registry_revision", System.currentTimeMillis()).commit()) { "No se pudo guardar la cámara." }
-        SyncScheduler.enqueue(appContext)
+        val saved = prefs.edit().putString("registered_cameras", json.toString())
+            .putLong("camera_registry_revision", System.currentTimeMillis()).commit()
+        if (!saved) {
+            prefs.edit().putString("registered_cameras", json.toString())
+                .putLong("camera_registry_revision", System.currentTimeMillis()).apply()
+        }
+        if (enqueueSync) {
+            SyncScheduler.enqueue(appContext)
+        }
         return camera
     }
 
-    fun removeRegisteredCamera(id: String) {
+    fun removeRegisteredCamera(id: String, enqueueSync: Boolean = true) {
         val rows = registeredCameras().filterNot { it.id == id }
         val json = JSONArray().apply {
             rows.forEach { put(JSONObject().put("id", it.id).put("name", it.name)) }
         }
-        check(prefs.edit().putString("registered_cameras", json.toString()).putLong("camera_registry_revision", System.currentTimeMillis()).commit()) {
-            "No se pudo quitar la cámara."
+        val saved = prefs.edit().putString("registered_cameras", json.toString())
+            .putLong("camera_registry_revision", System.currentTimeMillis()).commit()
+        if (!saved) {
+            prefs.edit().putString("registered_cameras", json.toString())
+                .putLong("camera_registry_revision", System.currentTimeMillis()).apply()
         }
         prefs.edit().remove("camera_ble_peers").remove("camera_wifi_peers")
             .remove("camera_wifi_host").remove("camera_wifi_port").remove("camera_wifi_secret")
             .remove("camera_wifi_peer_id").remove("camera_wifi_peer_name").apply()
-        SyncScheduler.enqueue(appContext)
+        if (enqueueSync) {
+            SyncScheduler.enqueue(appContext)
+        }
     }
 
     fun syncState(): SyncStateSummary = telemetry.syncStateSummary()

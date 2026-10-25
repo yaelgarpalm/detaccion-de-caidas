@@ -442,7 +442,7 @@ class MainActivity : ComponentActivity() {
                                 val devId = item.optString("id")
                                 val devName = item.optString("device_name").ifBlank { "Cámara" }
                                 if (devId.isNotBlank() && !store.registeredCameras().any { it.id == devId }) {
-                                    store.upsertRegisteredCamera(devId, devName)
+                                    store.upsertRegisteredCamera(devId, devName, enqueueSync = false)
                                     newlyLinked = true
                                 }
                             }
@@ -1633,7 +1633,7 @@ class MainActivity : ComponentActivity() {
                     val dev = devices.optJSONObject(i) ?: continue
                     val id = dev.optString("id")
                     val name = dev.optString("device_name").ifBlank { "Cámara" }
-                    if (id.isNotBlank()) store.upsertRegisteredCamera(id, name)
+                    if (id.isNotBlank()) store.upsertRegisteredCamera(id, name, enqueueSync = false)
                 }
                 val caregivers = backend.activeCaregiversForOwner()
                 store.prefs.edit().putBoolean("wearer_has_linked_caregiver", caregivers.length() > 0).apply()

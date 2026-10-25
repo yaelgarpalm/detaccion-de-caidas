@@ -106,7 +106,7 @@ private class SupabaseSyncRunner(context: Context) {
                     byLogicalId[logId] = devId
                 }
                 if (devType == "camera" && linkStatus == "linked" && logId != "camera-phone-local" && devId.isNotBlank()) {
-                    store.upsertRegisteredCamera(devId, devName)
+                    store.upsertRegisteredCamera(devId, devName, enqueueSync = false)
                 }
             }
 
@@ -152,11 +152,13 @@ private class SupabaseSyncRunner(context: Context) {
             )
 
             store.registeredCameras().forEach { camera ->
-                val existingReg = byLogicalId["camera-${camera.id}"]
-                val regFallback = existingReg ?: camera.id
-                backend.registerOrUpdateDevice(
-                    existingReg, regFallback, "camera-${camera.id}", camera.name, "camera", "unlinked"
-                )
+                if (!allExistingIds.contains(camera.id)) {
+                    val existingReg = byLogicalId["camera-${camera.id}"]
+                    val regFallback = existingReg ?: camera.id
+                    backend.registerOrUpdateDevice(
+                        existingReg, regFallback, "camera-${camera.id}", camera.name, "camera", "unlinked"
+                    )
+                }
             }
 
             store.prefs.edit()
